@@ -173,8 +173,10 @@ def sendmail(
         text = 'A plain text email'
 
     # build msg
+    from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
-    msg = MIMEText(text, _subtype='plain', _charset='utf-8')
+
+    msg = MIMEMultipart('alternative')
 
     def add_header(name, value):
         # add header to msg if set
@@ -188,6 +190,11 @@ def sendmail(
     add_header('Bcc', bcc)
     add_header('Reply-To', reply_to)
     add_header('Subject', subject)
+
+    if text:
+        msg.attach(MIMEText(text, _subtype='plain', _charset='utf-8'))
+    if html:
+        msg.attach(MIMEText(html, _subtype='html', _charset='utf-8'))
 
     msg_str = msg.as_string()
     log.debug('Email MIME Message: \n\n%s\n\n', msg_str)
