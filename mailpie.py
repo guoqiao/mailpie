@@ -36,6 +36,7 @@ Add env vars in your ~/.bashrc and source it:
 
 """
 import smtplib
+import os
 from os import environ as env
 
 import logging
@@ -103,7 +104,7 @@ def get_smtp_client(host, port, mode):
     else:
         client = smtplib.SMTP_SSL(host, port)
 
-    client.set_debuglevel(log.isEnabledFor(logging.DEBUG))
+    # client.set_debuglevel(log.isEnabledFor(logging.DEBUG))
     return client
 
 
@@ -168,21 +169,28 @@ def sendmail(
 
     text = text or env.get('EMAIL_TEXT')
     html = html or env.get('EMAIL_HTML')
-    attachments = attachments or get_list('EMAIL_ATTACHMENTS')
+    attachments = get_list(attachments) or get_list(env.get('EMAIL_ATTACHMENTS'))
+
     if not any([text, html, attachments]):
+        # no content, send a text to help test
         text = 'A plain text email'
 
     # build msg
-    from email.mime.multipart import MIMEMultipart
+    import mimetypes
+    from email import encoders
+    from email.mime.base import MIMEBase
     from email.mime.text import MIMEText
+    from email.mime.audio import MIMEAudio
+    from email.mime.image import MIMEImage
+    from email.mime.multipart import MIMEMultipart
 
-    msg = MIMEMultipart('alternative')
+    root = MIMEMultipart('alternative')
 
     def add_header(name, value):
         # add header to msg if set
         value = get_line(value)
         if value:
-            msg[name] = value
+            root[name] = value
 
     add_header('From', _from)
     add_header('To', to)
@@ -192,12 +200,44 @@ def sendmail(
     add_header('Subject', subject)
 
     if text:
-        msg.attach(MIMEText(text, _subtype='plain', _charset='utf-8'))
+        root.attach(MIMEText(text, _subtype='plain', _charset='utf-8'))
     if html:
-        msg.attach(MIMEText(html, _subtype='html', _charset='utf-8'))
+        root.attach(MIMEText(html, _subtype='html', _charset='utf-8'))
 
-    msg_str = msg.as_string()
-    log.debug('Email MIME Message: \n\n%s\n\n', msg_str)
+    for path in attachments:
+        if not os.path.isfile(path):
+            log.warn('skip invalid attachment: %s', path)
+            continue
+        ctype, encoding = mimetypes.guess_type(path)
+        if ctype is None or encoding is not None:
+            # No guess could be made, or the file is encoded (compressed), so
+            # use a generic bag-of-bits type.
+            ctype = 'application/octet-stream'
+        maintype, subtype = ctype.split('/', 1)
+        if maintype == 'text':
+            fp = open(path)
+            # Note: we should handle calculating the charset
+            msg = MIMEText(fp.read(), _subtype=subtype, _charset='utf-8')
+            fp.close()
+        elif maintype == 'image':
+            fp = open(path, 'rb')
+            msg = MIMEImage(fp.read(), _subtype=subtype)
+            fp.close()
+        elif maintype == 'audio':
+            fp = open(path, 'rb')
+            msg = MIMEAudio(fp.read(), _subtype=subtype)
+            fp.close()
+        else:
+            fp = open(path, 'rb')
+            msg = MIMEBase(maintype, subtype)
+            msg.set_payload(fp.read())
+            fp.close()
+            # Encode the payload using Base64
+            encoders.encode_base64(msg)
+        # Set the filename parameter
+        filename = os.path.basename(path)
+        msg.add_header('Content-Disposition', 'attachment', filename=filename)
+        root.attach(msg)
 
     # SMTP doesn't care about to, cc, bcc
     # put them all together
@@ -207,7 +247,7 @@ def sendmail(
     # send msg
     client = get_smtp_client(host, port, mode)
     client.login(user, password)
-    client.sendmail(_from, recipients, msg_str)
+    client.sendmail(_from, recipients, root.as_string())
     client.quit()
 
 
