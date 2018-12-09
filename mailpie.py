@@ -211,6 +211,16 @@ def sendmail(
         # no content, send a text to help test
         text = 'A plain text email'
 
+    # if text is a path, then read file context as text
+    if text:
+        path = text.strip()
+        if len(path.splitlines()) == 1:
+            path = os.path.expandvars(os.path.expanduser(path))
+            if os.path.isfile(path):
+                with open(path, mode='rt') as _file:
+                    text = _file.read()
+                    log.info('read text content from %s: \n\n%s\n\n', path, text)
+
     # build msg
     import mimetypes
     from email import encoders
