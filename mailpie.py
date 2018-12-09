@@ -201,7 +201,7 @@ def sendmail(
     if reply_to:
         assert _is_email(reply_to)
 
-    subject = subject or env.get('EMAIL_SUBJECT') or 'A test email'
+    subject = subject or env.get('EMAIL_SUBJECT') or 'No Subject'
 
     text = text or env.get('EMAIL_TEXT')
     html = html or env.get('EMAIL_HTML')
