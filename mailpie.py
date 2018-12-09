@@ -221,6 +221,16 @@ def sendmail(
                     text = _file.read()
                     log.info('read text content from %s: \n\n%s\n\n', path, text)
 
+    # if html is a path, then read file context as html
+    if html:
+        path = html.strip()
+        if len(path.splitlines()) == 1:
+            path = os.path.expandvars(os.path.expanduser(path))
+            if os.path.isfile(path):
+                with open(path, mode='rt') as _file:
+                    html = _file.read()
+                    log.info('read html content from %s: \n\n%s\n\n', path, html)
+
     # build msg
     import mimetypes
     from email import encoders
