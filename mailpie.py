@@ -63,6 +63,35 @@ SMTP_DEFAULT_MODE_PORT = {
     mode: port for port, mode in SMTP_DEFAULT_PORT_MODE.items()
 }
 
+# builtin smtp config for popular email domains
+SMTP_DOMAIN_CONFIG = {
+    'gmail.com': {
+        'host': 'smtp.gmail.com',
+        'port': 465,
+        'mode': SMTP_MODE_SSL,
+    },
+    'outlook.com': {
+        'host': 'smtp-mail.outlook.com',
+        'port': 587,
+        'mode': SMTP_MODE_STARTTLS,
+    },
+    '163.com': {
+        'host': 'smtp.163.com',
+        'port': 465,
+        'mode': SMTP_MODE_SSL,
+    },
+    'qq.com': {
+        'host': 'smtp.qq.com',
+        'port': 465,
+        'mode': SMTP_MODE_SSL,
+    },
+    'exmail.qq.com': {
+        'host': 'smtp.exmail.qq.com',
+        'port': 465,
+        'mode': SMTP_MODE_SSL,
+    },
+}
+
 
 def _is_email(email):
     # TODO: verify email
@@ -126,7 +155,14 @@ def sendmail(
     if not password:
         raise ValueError('user email password is required')
 
-    domain = user.strip().split('@')[-1]
+    domain = user.strip().split('@')[-1].lower()
+
+    config = SMTP_DOMAIN_CONFIG.get(domain)
+    if config:
+        host = config.get('host')
+        port = config.get('port')
+        mode = config.get('mode')
+        log.info('SMTP config for %s: %s:%s %s', domain, host, port, mode)
 
     host = host or env.get('EMAIL_HOST')
     if not host:
