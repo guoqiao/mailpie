@@ -116,6 +116,17 @@ def get_line(value, sep=','):
     return value
 
 
+def read_path(path):
+    """
+    Read file content at path if possible.
+    """
+    if path and len(path.splitlines()) == 1:
+        path = os.path.expandvars(os.path.expanduser(path))
+        if os.path.isfile(path):
+            return open(path, mode='rt').read()
+    return ''
+
+
 def get_smtp_client(host, port, mode):
     """
     Get SMTP connection.
@@ -212,24 +223,15 @@ def sendmail(
         text = 'A plain text email'
 
     # if text is a path, then read file context as text
-    if text:
-        path = text.strip()
-        if len(path.splitlines()) == 1:
-            path = os.path.expandvars(os.path.expanduser(path))
-            if os.path.isfile(path):
-                with open(path, mode='rt') as _file:
-                    text = _file.read()
-                    log.info('read text content from %s: \n\n%s\n\n', path, text)
+    content = read_path(text)
+    if content:
+        log.info('read text content from %s: \n\n%s\n\n', text, content)
+        text = content
 
-    # if html is a path, then read file context as html
-    if html:
-        path = html.strip()
-        if len(path.splitlines()) == 1:
-            path = os.path.expandvars(os.path.expanduser(path))
-            if os.path.isfile(path):
-                with open(path, mode='rt') as _file:
-                    html = _file.read()
-                    log.info('read html content from %s: \n\n%s\n\n', path, html)
+    content = read_path(html)
+    if content:
+        log.info('read html content from %s: \n\n%s\n\n', html, content)
+        html = content
 
     # build msg
     import mimetypes
