@@ -197,7 +197,8 @@ def sendmail(
         host=None, port=None, mode=None,
         _from=None, to=None, cc=None, bcc=None, reply_to=None,
         subject=None, extra_headers=None,
-        text=None, html=None, attachments=None):
+        text=None, html=None, attachments=None,
+        **kwargs):
 
     # load envvars
     user = user or env.get('EMAIL_HOST_USER')
@@ -326,7 +327,7 @@ def sendmail(
     # SMTP doesn't care about to, cc, bcc
     # put them all together
     recipients = to + cc + bcc
-    log.debug('SMTP recipients: %s', recipients)
+    log.info('Email recipients: %s', recipients)
 
     # send msg
     client = get_smtp_client(host, port, mode)
@@ -337,64 +338,75 @@ def sendmail(
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Send SMTP email from cli')
+    parser = argparse.ArgumentParser(description='Send email from CLI')
+    email_options = parser.add_argument_group('Email Options')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-u', '--user', metavar='EMAIL_HOST_USER',
         help='user email address to authenticate')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-p', '--password', metavar='EMAIL_HOST_PASSWORD',
         help='user email password to authenticate')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-H', '--host', metavar='EMAIL_HOST',
         help='SMTP host')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-P', '--port', metavar='EMAIL_PORT', type=int,
         help='SMTP port')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-M', '--mode', metavar='EMAIL_MODE', choices=SMTP_MODE_CHOICES,
         help='SMTP mode, choices: {}'.format('|'.join(SMTP_MODE_CHOICES)))
 
-    parser.add_argument(
+    email_options.add_argument(
         '--from', metavar='EMAIL_FROM', dest='_from',
         help='From email address')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--to', metavar='EMAIL_TO', action='append', default=[],
         help='To email address, can repeat')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--cc', metavar='EMAIL_CC', action='append', default=[],
         help='Cc email address, can repeat')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--bcc', metavar='EMAIL_BCC', action='append', default=[],
         help='Bcc email address, can repeat')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--reply-to', metavar='EMAIL_REPLY_TO', dest='reply_to',
         help='Reply-To email address')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-s', '--subject', metavar='EMAIL_SUBJECT',
         help='email subject')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--text', metavar='EMAIL_TEXT',
         help='email content text version')
 
-    parser.add_argument(
+    email_options.add_argument(
         '--html', metavar='EMAIL_HTML',
         help='email content html version')
 
-    parser.add_argument(
+    email_options.add_argument(
         '-a', '--attachment', metavar='ATTACHMENT',
         action='append', default=[], dest='attachments',
         help='attachment path, can repeat, can be file or dir')
 
+    log_options = parser.add_mutually_exclusive_group(required=False)
+    log_options.add_argument(
+        '--verbose', action='store_true',
+        help='Print debug logs')
+    log_options.add_argument(
+        '--quiet', action='store_true',
+        help='Only print error logs')
+
     args = parser.parse_args()
+    log_level = args.verbose and logging.DEBUG or args.quiet and logging.ERROR or logging.INFO
+    log.setLevel(log_level)
     sendmail(**vars(args))
