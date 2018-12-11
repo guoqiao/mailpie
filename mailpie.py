@@ -199,14 +199,34 @@ def sendmail(
         subject=None, extra_headers=None,
         text=None, html=None, attachments=None):
 
-    # check required fields
+    # load envvars
     user = user or env.get('EMAIL_HOST_USER')
+    password = password or env.get('EMAIL_HOST_PASSWORD')
+
+    host = host or env.get('EMAIL_HOST')
+    port = port or env.get('EMAIL_PORT')
+    mode = mode or env.get('EMAIL_MODE')
+
+    _from = _from or env.get('EMAIL_FROM') or user
+    reply_to = reply_to or env.get('EMAIL_REPLY_TO')
+
+    to = get_list(to or env.get('EMAIL_TO')) or [_from]
+    cc = get_list(cc or env.get('EMAIL_CC'))
+    bcc = get_list(bcc or env.get('EMAIL_BCC'))
+
+    subject = subject or env.get('EMAIL_SUBJECT') or 'No Subject'
+
+    text = text or env.get('EMAIL_TEXT')
+    html = html or env.get('EMAIL_HTML')
+
+    attachments = get_list(attachments or env.get('EMAIL_ATTACHMENTS'))
+
+    # check required fields
     if not user:
         raise ValueError('user email address is required')
     elif not _is_email(user):
         raise ValueError('user must be a full email address')
 
-    password = password or env.get('EMAIL_HOST_PASSWORD')
     if not password:
         raise ValueError('user email password is required')
 
@@ -219,18 +239,15 @@ def sendmail(
         mode = config.get('mode')
         log.info('SMTP config for %s: %s:%s %s', domain, host, port, mode)
 
-    host = host or env.get('EMAIL_HOST')
     if not host:
         host = 'smtp.{}'.format(domain)
         log.warn('no smtp host, guess it to be %s', host)
 
-    port = port or env.get('EMAIL_PORT')
     if port:
         port = int(port)
         if port <= 0:
             raise ValueError('port must be positive integer')
 
-    mode = mode or env.get('EMAIL_MODE')
     if mode and mode not in SMTP_MODE_CHOICES:
         raise ValueError('invalid mode: {}, choices: {}'.format(mode, '|'.join(SMTP_MODE_CHOICES)))
 
@@ -245,22 +262,10 @@ def sendmail(
         port, mode = 465, SMTP_MODE_SSL
         log.warn('no port and no mode, use 465 and SSL as prefered')
 
-    _from = _from or env.get('EMAIL_FROM') or user
     assert _is_email(_from)
 
-    to = get_list(to) or get_list(env.get('EMAIL_TO')) or [_from]
-    cc = get_list(cc) or get_list(env.get('EMAIL_CC'))
-    bcc = get_list(bcc) or get_list(env.get('EMAIL_BCC'))
-
-    reply_to = reply_to or env.get('EMAIL_REPLY_TO')
     if reply_to:
         assert _is_email(reply_to)
-
-    subject = subject or env.get('EMAIL_SUBJECT') or 'No Subject'
-
-    text = text or env.get('EMAIL_TEXT')
-    html = html or env.get('EMAIL_HTML')
-    attachments = get_list(attachments) or get_list(env.get('EMAIL_ATTACHMENTS'))
 
     if not any([text, html, attachments]):
         # no content, send a text to help test
