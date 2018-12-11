@@ -39,6 +39,14 @@ import smtplib
 import os
 from os import environ as env
 
+import mimetypes
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email.mime.audio import MIMEAudio
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+
 import logging
 logging.basicConfig(level=env.get('PYTHON_LOG_LEVEL', 'DEBUG'))
 log = logging.getLogger('MailPie')
@@ -148,6 +156,42 @@ def get_smtp_client(host, port, mode):
     return client
 
 
+def build_mime_msg(path):
+    """Build MIME Message from path"""
+    if not os.path.isfile(path):
+        log.warn('skip invalid attachment: %s', path)
+        return None
+    ctype, encoding = mimetypes.guess_type(path)
+    if ctype is None or encoding is not None:
+        # No guess could be made, or the file is encoded (compressed), so
+        # use a generic bag-of-bits type.
+        ctype = 'application/octet-stream'
+    maintype, subtype = ctype.split('/', 1)
+    if maintype == 'text':
+        fp = open(path)
+        msg = MIMEText(fp.read(), _subtype=subtype, _charset='utf-8')
+        fp.close()
+    elif maintype == 'image':
+        fp = open(path, 'rb')
+        msg = MIMEImage(fp.read(), _subtype=subtype)
+        fp.close()
+    elif maintype == 'audio':
+        fp = open(path, 'rb')
+        msg = MIMEAudio(fp.read(), _subtype=subtype)
+        fp.close()
+    else:
+        fp = open(path, 'rb')
+        msg = MIMEBase(maintype, subtype)
+        msg.set_payload(fp.read())
+        fp.close()
+        # Encode the payload using Base64
+        encoders.encode_base64(msg)
+    # Set the filename parameter
+    filename = os.path.basename(path)
+    msg.add_header('Content-Disposition', 'attachment', filename=filename)
+    return msg
+
+
 def sendmail(
         user=None, password=None,
         host=None, port=None, mode=None,
@@ -233,15 +277,6 @@ def sendmail(
         log.info('read html content from %s: \n\n%s\n\n', html, content)
         html = content
 
-    # build msg
-    import mimetypes
-    from email import encoders
-    from email.mime.base import MIMEBase
-    from email.mime.text import MIMEText
-    from email.mime.audio import MIMEAudio
-    from email.mime.image import MIMEImage
-    from email.mime.multipart import MIMEMultipart
-
     root = MIMEMultipart('alternative')
 
     def add_header(name, value):
@@ -262,40 +297,26 @@ def sendmail(
     if html:
         root.attach(MIMEText(html, _subtype='html', _charset='utf-8'))
 
+    files = set([])
     for path in attachments:
-        if not os.path.isfile(path):
-            log.warn('skip invalid attachment: %s', path)
-            continue
-        ctype, encoding = mimetypes.guess_type(path)
-        if ctype is None or encoding is not None:
-            # No guess could be made, or the file is encoded (compressed), so
-            # use a generic bag-of-bits type.
-            ctype = 'application/octet-stream'
-        maintype, subtype = ctype.split('/', 1)
-        if maintype == 'text':
-            fp = open(path)
-            # Note: we should handle calculating the charset
-            msg = MIMEText(fp.read(), _subtype=subtype, _charset='utf-8')
-            fp.close()
-        elif maintype == 'image':
-            fp = open(path, 'rb')
-            msg = MIMEImage(fp.read(), _subtype=subtype)
-            fp.close()
-        elif maintype == 'audio':
-            fp = open(path, 'rb')
-            msg = MIMEAudio(fp.read(), _subtype=subtype)
-            fp.close()
-        else:
-            fp = open(path, 'rb')
-            msg = MIMEBase(maintype, subtype)
-            msg.set_payload(fp.read())
-            fp.close()
-            # Encode the payload using Base64
-            encoders.encode_base64(msg)
-        # Set the filename parameter
-        filename = os.path.basename(path)
-        msg.add_header('Content-Disposition', 'attachment', filename=filename)
-        root.attach(msg)
+        path = os.path.expandvars(os.path.expanduser(path))
+        if os.path.isfile(path):
+            files.add(path)
+        elif os.path.isdir(path):
+            for dirpath, dirnames, filenames in os.walk(path):
+                for filename in filenames:
+                    files.add(os.path.join(dirpath, filename))
+
+    n = 1
+    for path in files:  # limit files
+        msg = build_mime_msg(path)
+        if msg:
+            log.debug('attach %02d: %s', n, path)
+            root.attach(msg)
+            n += 1
+            if n >= 20:
+                log.warning('too many files, only 20 attached')
+                break
 
     # SMTP doesn't care about to, cc, bcc
     # put them all together
@@ -368,7 +389,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-a', '--attachment', metavar='ATTACHMENT',
         action='append', default=[], dest='attachments',
-        help='email attachment, can repeat, can be file path, directory path, url')
+        help='attachment path, can repeat, can be file or dir')
 
     args = parser.parse_args()
     sendmail(**vars(args))
