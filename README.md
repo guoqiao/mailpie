@@ -1,2 +1,3 @@
-# smtpcli
-A simple but generic Python script to send email with SMTP.
+# MailPie
+
+Send email from CLI with Python.
