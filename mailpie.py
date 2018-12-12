@@ -1,41 +1,10 @@
 #!/usr/bin/env python
 # coding=utf8
 """
-A Python cmd/lib to help send mail easily.
-
-Send email with SMTP with minimal config.
-
-Add env vars in your ~/.bashrc and source it:
-
-    export EMAIL_HOST=smtp.example.com
-
-    # default, plain text, not secure
-    # export EMAIL_PORT=25
-
-    # starttls, a extension to smtp
-    # export EMAIL_PORT=587
-
-    # ssl, recommanded
-    export EMAIL_PORT=465
-
-    # required only for non-default ports, Plain|STARTTLS|SSL
-    # export EMAIL_MODE=SSL
-
-    # optional for starttls and ssl
-    # export EMAIL_SSL_CERTFILE=
-    # export EMAIL_SSL_KEYFILE=
-
-    # account used to login/authenticate
-    export EMAIL_HOST_USER=user@example.com
-    export EMAIL_HOST_PASSWORD=PASSWORD
-
-    # From address displayed in email, could be differnt from above user
-    export EMAIL_FROM=user+test@example.com
-    # To address list, comma separated string
-    export EMAIL_TO=foo@gmail.com,bar@example.com
-
+Send email from CLI with Python.
 """
 import smtplib
+import json
 import os
 from os import environ as env
 
@@ -61,50 +30,6 @@ SMTP_MODE_CHOICES = (
     SMTP_MODE_SSL,
 )
 
-SMTP_DEFAULT_PORT_MODE = {
-    25: SMTP_MODE_PLAIN,
-    587: SMTP_MODE_STARTTLS,
-    465: SMTP_MODE_SSL,
-}
-
-SMTP_DEFAULT_MODE_PORT = {
-    mode: port for port, mode in SMTP_DEFAULT_PORT_MODE.items()
-}
-
-# builtin smtp config for popular email domains
-SMTP_DOMAIN_CONFIG = {
-    'gmail.com': {
-        'host': 'smtp.gmail.com',
-        'port': 465,
-        'mode': SMTP_MODE_SSL,
-    },
-    'outlook.com': {
-        'host': 'smtp-mail.outlook.com',
-        'port': 587,
-        'mode': SMTP_MODE_STARTTLS,
-    },
-    '163.com': {
-        'host': 'smtp.163.com',
-        'port': 465,
-        'mode': SMTP_MODE_SSL,
-    },
-    'qq.com': {
-        'host': 'smtp.qq.com',
-        'port': 465,
-        'mode': SMTP_MODE_SSL,
-    },
-    'exmail.qq.com': {
-        'host': 'smtp.exmail.qq.com',
-        'port': 465,
-        'mode': SMTP_MODE_SSL,
-    },
-}
-
-
-def _is_email(email):
-    # TODO: verify email
-    return email.count('@') == 1
-
 
 def get_list(value, sep=','):
     """Get a list from value"""
@@ -112,15 +37,6 @@ def get_list(value, sep=','):
         return []
     if isinstance(value, str):  # single or comma separated
         return value.strip().strip(sep).split(sep)
-    return value
-
-
-def get_line(value, sep=','):
-    """Get a str line from value"""
-    if not value:
-        return ''
-    if isinstance(value, (list, tuple)):
-        return sep.join(value)
     return value
 
 
@@ -135,14 +51,40 @@ def read_path(path):
     return ''
 
 
-def get_smtp_client(host, port, mode):
+class Config(object):
+
+    def __init__(self):
+        self.data = self.load()
+        assert self.data, 'fail to load config'
+
+    def load(self):
+        paths = [
+            '~/.mailpie.json',
+            '/etc/mailpie.json',
+        ]
+        for path in paths:
+            path = os.path.expandvars(os.path.expanduser(path))
+            try:
+                with open(path, mode='rt') as conf_file:
+                    return json.load(conf_file)
+            except Exception:
+                continue
+        return {}
+
+    def get_account(self, name='default'):
+        return self.data.get('accounts', {}).get(name, {})
+
+    def get_contact(self, name='default'):
+        return self.data.get('contacts', {}).get(name, '')
+
+
+def get_smtp_client(account_config, debuglevel=False):
     """
     Get SMTP connection.
     """
-    assert host and port and mode
-    assert mode in SMTP_MODE_CHOICES
-    port = int(port)
-    assert port > 0
+    host = account_config['host']
+    port = account_config['port']
+    mode = account_config['mode']
 
     if mode == SMTP_MODE_PLAIN:
         client = smtplib.SMTP(host, port)
@@ -152,7 +94,8 @@ def get_smtp_client(host, port, mode):
     else:
         client = smtplib.SMTP_SSL(host, port)
 
-    # client.set_debuglevel(log.isEnabledFor(logging.DEBUG))
+    client.login(account_config['username'], account_config['password'])
+    client.set_debuglevel(debuglevel)
     return client
 
 
@@ -193,80 +136,28 @@ def build_mime_msg(path):
 
 
 def sendmail(
-        user=None, password=None,
-        host=None, port=None, mode=None,
+        account='default',
         _from=None, to=None, cc=None, bcc=None, reply_to=None,
         subject=None, extra_headers=None,
         text=None, html=None, attachments=None,
         **kwargs):
 
-    # load envvars
-    user = user or env.get('EMAIL_HOST_USER')
-    password = password or env.get('EMAIL_HOST_PASSWORD')
+    config = Config()
+    account_config = config.get_account(account)
+    username = account_config['username']
 
-    host = host or env.get('EMAIL_HOST')
-    port = port or env.get('EMAIL_PORT')
-    mode = mode or env.get('EMAIL_MODE')
-
-    _from = _from or env.get('EMAIL_FROM') or user
+    _from = _from or env.get('EMAIL_FROM') or username
     reply_to = reply_to or env.get('EMAIL_REPLY_TO')
 
     to = get_list(to or env.get('EMAIL_TO')) or [_from]
     cc = get_list(cc or env.get('EMAIL_CC'))
     bcc = get_list(bcc or env.get('EMAIL_BCC'))
+    attachments = get_list(attachments or env.get('EMAIL_ATTACHMENTS'))
 
     subject = subject or env.get('EMAIL_SUBJECT') or 'No Subject'
 
     text = text or env.get('EMAIL_TEXT')
     html = html or env.get('EMAIL_HTML')
-
-    attachments = get_list(attachments or env.get('EMAIL_ATTACHMENTS'))
-
-    # check required fields
-    if not user:
-        raise ValueError('user email address is required')
-    elif not _is_email(user):
-        raise ValueError('user must be a full email address')
-
-    if not password:
-        raise ValueError('user email password is required')
-
-    domain = user.strip().split('@')[-1].lower()
-
-    config = SMTP_DOMAIN_CONFIG.get(domain)
-    if config:
-        host = config.get('host')
-        port = config.get('port')
-        mode = config.get('mode')
-        log.info('SMTP config for %s: %s:%s %s', domain, host, port, mode)
-
-    if not host:
-        host = 'smtp.{}'.format(domain)
-        log.warn('no smtp host, guess it to be %s', host)
-
-    if port:
-        port = int(port)
-        if port <= 0:
-            raise ValueError('port must be positive integer')
-
-    if mode and mode not in SMTP_MODE_CHOICES:
-        raise ValueError('invalid mode: {}, choices: {}'.format(mode, '|'.join(SMTP_MODE_CHOICES)))
-
-    if port and not mode:
-        mode = SMTP_DEFAULT_PORT_MODE.get(int(port))
-        if not mode:
-            raise ValueError('we can not guess mode from port {}'.format(port))
-    elif mode and not port:
-        port = SMTP_DEFAULT_MODE_PORT[mode]
-        log.warn('we guess smtp port %s from mode %s', port, mode)
-    elif not port and not mode:
-        port, mode = 465, SMTP_MODE_SSL
-        log.warn('no port and no mode, use 465 and SSL as prefered')
-
-    assert _is_email(_from)
-
-    if reply_to:
-        assert _is_email(reply_to)
 
     if not any([text, html, attachments]):
         # no content, send a text to help test
@@ -286,10 +177,10 @@ def sendmail(
     root = MIMEMultipart('alternative')
 
     def add_header(name, value):
-        # add header to msg if set
-        value = get_line(value)
         if value:
-            root[name] = value
+            if isinstance(value, (list, tuple)):
+                value = ','.join(value)
+            root[name] = str(value)
 
     add_header('From', _from)
     add_header('To', to)
@@ -317,7 +208,7 @@ def sendmail(
     for path in files:  # limit files
         msg = build_mime_msg(path)
         if msg:
-            log.debug('attach %02d: %s', n, path)
+            log.info('Attachment %02d: %s', n, path)
             root.attach(msg)
             n += 1
             if n >= 20:
@@ -327,13 +218,20 @@ def sendmail(
     # SMTP doesn't care about to, cc, bcc
     # put them all together
     recipients = to + cc + bcc
-    log.info('Email recipients: %s', recipients)
 
-    # send msg
-    client = get_smtp_client(host, port, mode)
-    client.login(user, password)
-    client.sendmail(_from, recipients, root.as_string())
+    msg_str = root.as_string()
+    if not attachments:
+        log.info('Message: \n\n%s\n' % msg_str)
+    else:
+        log.info('From: %s', _from)
+        log.info('To: %s', recipients)
+        log.info('Subject: %s', subject)
+
+    debuglevel = log.isEnabledFor(logging.DEBUG)
+    client = get_smtp_client(account_config, debuglevel=debuglevel)
+    client.sendmail(_from, recipients, msg_str)
     client.quit()
+    log.info('Email sent successfully.')
 
 
 if __name__ == '__main__':
@@ -342,40 +240,24 @@ if __name__ == '__main__':
     email_options = parser.add_argument_group('Email Options')
 
     email_options.add_argument(
-        '-u', '--user', metavar='EMAIL_HOST_USER',
-        help='user email address to authenticate')
-
-    email_options.add_argument(
-        '-p', '--password', metavar='EMAIL_HOST_PASSWORD',
-        help='user email password to authenticate')
-
-    email_options.add_argument(
-        '-H', '--host', metavar='EMAIL_HOST',
-        help='SMTP host')
-
-    email_options.add_argument(
-        '-P', '--port', metavar='EMAIL_PORT', type=int,
-        help='SMTP port')
-
-    email_options.add_argument(
-        '-M', '--mode', metavar='EMAIL_MODE', choices=SMTP_MODE_CHOICES,
-        help='SMTP mode, choices: {}'.format('|'.join(SMTP_MODE_CHOICES)))
+        '-a', '--account', default='default',
+        help='account name defined in config')
 
     email_options.add_argument(
         '--from', metavar='EMAIL_FROM', dest='_from',
-        help='From email address')
+        help='From email address to display in message')
 
     email_options.add_argument(
         '--to', metavar='EMAIL_TO', action='append', default=[],
-        help='To email address, can repeat')
+        help='To email address, can be repeated')
 
     email_options.add_argument(
         '--cc', metavar='EMAIL_CC', action='append', default=[],
-        help='Cc email address, can repeat')
+        help='Cc email address, can be repeated')
 
     email_options.add_argument(
         '--bcc', metavar='EMAIL_BCC', action='append', default=[],
-        help='Bcc email address, can repeat')
+        help='Bcc email address, can be repeated')
 
     email_options.add_argument(
         '--reply-to', metavar='EMAIL_REPLY_TO', dest='reply_to',
@@ -394,9 +276,9 @@ if __name__ == '__main__':
         help='email content html version')
 
     email_options.add_argument(
-        '-a', '--attachment', metavar='ATTACHMENT',
+        '-A', '--attachment', metavar='ATTACHMENT',
         action='append', default=[], dest='attachments',
-        help='attachment path, can repeat, can be file or dir')
+        help='attachment path, can be repeated, can be file or dir')
 
     log_options = parser.add_mutually_exclusive_group(required=False)
     log_options.add_argument(
@@ -407,6 +289,8 @@ if __name__ == '__main__':
         help='Only print error logs')
 
     args = parser.parse_args()
-    log_level = args.verbose and logging.DEBUG or args.quiet and logging.ERROR or logging.INFO
+    log_level = (args.verbose and logging.DEBUG or
+                 args.quiet and logging.ERROR or
+                 logging.INFO)
     log.setLevel(log_level)
     sendmail(**vars(args))
