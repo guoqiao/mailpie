@@ -147,6 +147,10 @@ def sendmail(
     username = account_config['username']
 
     _from = _from or env.get('EMAIL_FROM') or username
+    if '@' not in _from:  # a short name
+        domain = username.split('@')[-1]
+        _from = '{}@{}'.format(_from, domain)
+
     reply_to = reply_to or env.get('EMAIL_REPLY_TO')
 
     to = get_list(to or env.get('EMAIL_TO')) or [_from]
