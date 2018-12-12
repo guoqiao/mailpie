@@ -74,8 +74,8 @@ class Config(object):
     def get_account(self, name='default'):
         return self.data.get('accounts', {}).get(name, {})
 
-    def get_contact(self, name='default'):
-        return self.data.get('contacts', {}).get(name, '')
+    def get_contact(self, name):
+        return self.data.get('contacts', {}).get(name, name)
 
 
 def get_smtp_client(account_config, debuglevel=False):
@@ -153,6 +153,10 @@ def sendmail(
     cc = get_list(cc or env.get('EMAIL_CC'))
     bcc = get_list(bcc or env.get('EMAIL_BCC'))
     attachments = get_list(attachments or env.get('EMAIL_ATTACHMENTS'))
+
+    to = [config.get_contact(s) for s in to]
+    cc = [config.get_contact(s) for s in cc]
+    bcc = [config.get_contact(s) for s in bcc]
 
     subject = subject or env.get('EMAIL_SUBJECT') or 'No Subject'
 
