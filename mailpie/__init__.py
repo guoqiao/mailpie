@@ -102,9 +102,15 @@ def get_smtp_client(account_config, debuglevel=False):
 
 def build_mime_msg(path, filename=''):
     """Build MIME Message from path"""
+
+    # set filename with /path/to/file:filename
+    if ':' in path:
+        path, filename = path.rsplit(':', 1)
+
     if not os.path.isfile(path):
         log.warn('skip invalid attachment: %s', path)
         return None
+
     ctype, encoding = mimetypes.guess_type(path)
     if ctype is None or encoding is not None:
         # No guess could be made, or the file is encoded (compressed), so
