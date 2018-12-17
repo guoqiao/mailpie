@@ -100,7 +100,7 @@ def get_smtp_client(account_config, debuglevel=False):
     return client
 
 
-def build_mime_msg(path):
+def build_mime_msg(path, filename=''):
     """Build MIME Message from path"""
     if not os.path.isfile(path):
         log.warn('skip invalid attachment: %s', path)
@@ -131,7 +131,7 @@ def build_mime_msg(path):
         # Encode the payload using Base64
         encoders.encode_base64(msg)
     # Set the filename parameter
-    filename = os.path.basename(path)
+    filename = filename or os.path.basename(path)
     msg.add_header('Content-Disposition', 'attachment', filename=filename)
     return msg
 
