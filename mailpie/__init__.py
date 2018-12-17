@@ -3,9 +3,10 @@
 """
 Send email from CLI with Python.
 """
-import smtplib
-import json
 import os
+import json
+import smtplib
+from io import open
 from os import environ as env
 
 import mimetypes
@@ -64,12 +65,11 @@ class Config(object):
         ]
         for path in paths:
             path = os.path.expandvars(os.path.expanduser(path))
-            try:
+            if os.path.isfile(path):
                 with open(path, mode='rt') as conf_file:
                     log.info('loading config from %s', path)
                     return json.load(conf_file)
-            except Exception:
-                continue
+        log.error('no config file found')
         return {}
 
     def get_account(self, name='default'):
@@ -118,7 +118,7 @@ def build_mime_msg(path, filename=''):
         ctype = 'application/octet-stream'
     maintype, subtype = ctype.split('/', 1)
     if maintype == 'text':
-        fp = open(path)
+        fp = open(path, 'rt')
         msg = MIMEText(fp.read(), _subtype=subtype, _charset='utf-8')
         fp.close()
     elif maintype == 'image':
