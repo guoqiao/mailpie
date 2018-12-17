@@ -10,15 +10,13 @@ Python3, no other dependencies.
 
 ### Installing
 
-You can install it from pip(comming soon):
+You can install it from pip:
 
     pip install mailpie
 
-Or just download the `mailpie.py` file and use it:
+Install it from code:
 
-    wget https://raw.githubusercontent.com/guoqiao/mailpie/master/mailpie.py
-    chmod a+x mailpie.py
-    ./mailpie.py -h
+    pip install -e .
 
 ### Configuration
 
