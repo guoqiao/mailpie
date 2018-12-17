@@ -66,6 +66,7 @@ class Config(object):
             path = os.path.expandvars(os.path.expanduser(path))
             try:
                 with open(path, mode='rt') as conf_file:
+                    log.info('loading config from %s', path)
                     return json.load(conf_file)
             except Exception:
                 continue
